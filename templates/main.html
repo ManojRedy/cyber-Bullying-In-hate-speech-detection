@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hate Speech Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #333;
+            --container-bg: white;
+            --border-color: #ddd;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --toxic-color: #c62828;
+            --toxic-bg: #ffebee;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #f5f5f5;
+            --container-bg: #2d2d2d;
+            --border-color: #444;
+            --primary-color: #4a90e2;
+            --primary-hover: #357abd;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .container {
+            background: var(--container-bg);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: all 0.4s ease;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        .container:hover {
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            animation: fadeIn 1s ease-out;
+        }
+
+        h1 {
+            color: var(--text-color);
+            margin: 0;
+            animation: bounceIn 1s ease-out;
+        }
+
+        .theme-toggle {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--primary-hover);
+            transform: scale(1.05);
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            background: var(--container-bg);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        textarea:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        button {
+            background: var(--primary-color);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 5px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.5);
+            opacity: 0;
+            border-radius: 100%;
+            transform: scale(1, 1) translate(-50%);
+            transform-origin: 50% 50%;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        button:active::after {
+            animation: ripple 1s ease-out;
+        }
+
+        .results {
+            margin-top: 20px;
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .toxic-warning {
+            background: var(--toxic-bg);
+            color: var(--toxic-color);
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid var(--toxic-color);
+            animation: shake 0.5s ease-in-out, pulse 2s infinite;
+        }
+
+        .result-item {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .result-item:hover {
+            background-color: rgba(0, 123, 255, 0.05);
+            transform: translateX(5px);
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+            animation: pulse 1.5s infinite;
+        }
+
+        .chart-container {
+            margin: 20px 0;
+            height: 300px;
+            animation: fadeIn 1s ease-out;
+            position: relative;
+            transition: all 0.5s ease;
+        }
+
+        .chart-toggle {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 15px;
+            padding: 5px;
+            display: flex;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        [data-theme="dark"] .chart-toggle {
+            background: rgba(45, 45, 45, 0.8);
+        }
+
+        .chart-toggle-btn {
+            background: none;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .chart-toggle-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .action-buttons {
+            margin: 20px 0;
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .copy-btn {
+            background: #28a745;
+        }
+
+        .copy-btn:hover {
+            background: #218838;
+        }
+
+        .history-btn {
+            background: #6c757d;
+        }
+
+        .history-btn:hover {
+            background: #545b62;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .modal-content {
+            background-color: var(--container-bg);
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            animation: zoomIn 0.3s ease-out;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .close-btn:hover {
+            transform: rotate(90deg);
+            color: var(--primary-color);
+        }
+
+        .history-item {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 10px;
+            border-radius: 5px;
+            background-color: var(--bg-color);
+            transition: all 0.3s ease;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .history-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .history-text {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: var(--container-bg);
+            border-radius: 5px;
+            border-left: 4px solid var(--primary-color);
+            transition: all 0.3s ease;
+        }
+
+        .history-results {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .clear-history-btn {
+            background: #dc3545;
+            margin-top: 20px;
+        }
+
+        .clear-history-btn:hover {
+            background: #c82333;
+        }
+
+        .no-history {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+            animation: fadeIn 1s ease-out;
+        }
+
+        /* Animation Keyframes */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            60% { transform: scale(1.05); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes zoomIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+
+        @keyframes ripple {
+            0% { transform: scale(0, 0); opacity: 0.5; }
+            20% { transform: scale(25, 25); opacity: 0.3; }
+            100% { transform: scale(50, 50); opacity: 0; }
+        }
+
+        @keyframes chartSwitch {
+            0% { opacity: 0; transform: scale(0.9) rotate(-5deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0); }
+        }
+
+        .chart-switch {
+            animation: chartSwitch 0.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚨 Hate Speech Detector</h1>
+            <button class="theme-toggle" id="theme-toggle">🌙 Dark Mode</button>
+        </div>
+        
+        <p>Enter text below to analyze it for toxic content:</p>
+        
+        <form id="analysis-form">
+            <textarea name="text" placeholder="Type or paste text here..." required></textarea>
+            <div>
+                <button type="submit">Analyze Text</button>
+                <button type="button" class="history-btn" id="history-btn">View History</button>
+            </div>
+        </form>
+
+        <div class="loading" id="loading">
+            Analyzing... ⏳
+        </div>
+
+        <div class="results" id="results">
+            <h2>Analysis Results:</h2>
+            <div id="toxic-warning" class="toxic-warning" style="display: none;">
+                <strong>🚨 WARNING:</strong> This text has been flagged as potentially harmful!
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-toggle" id="chart-toggle">
+                    <button class="chart-toggle-btn active" data-type="bar">Bar</button>
+                    <button class="chart-toggle-btn" data-type="pie">Pie</button>
+                </div>
+                <canvas id="toxicity-chart"></canvas>
+            </div>
+            
+            <div id="results-list"></div>
+            
+            <div class="action-buttons">
+                <button class="copy-btn" onclick="copyResults()">📋 Copy Results</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal" id="history-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Analysis History</h2>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <div id="history-list">
+                <div class="no-history">No analysis history found.</div>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="clear-history-btn" id="clear-history">Clear History</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+        
+        // Load saved theme or use system preference
+        const currentTheme = localStorage.getItem('theme') || 
+                            (prefersDarkScheme.matches ? 'dark' : 'light');
+        
+        if (currentTheme === 'dark') {
+            document.body.setAttribute('data-theme', 'dark');
+            themeToggle.textContent = '☀️ Light Mode';
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            let theme = 'light';
+            if (document.body.getAttribute('data-theme') !== 'dark') {
+                document.body.setAttribute('data-theme', 'dark');
+                themeToggle.textContent = '☀️ Light Mode';
+                theme = 'dark';
+            } else {
+                document.body.removeAttribute('data-theme');
+                themeToggle.textContent = '🌙 Dark Mode';
+            }
+            localStorage.setItem('theme', theme);
+        });
+
+        let toxicityChart = null;
+        let currentChartType = 'bar';
+        let chartData = null;
+
+        // Chart toggle functionality
+        document.querySelectorAll('.chart-toggle-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const chartType = this.getAttribute('data-type');
+                if (chartType === currentChartType) return;
+                
+                // Update active button
+                document.querySelectorAll('.chart-toggle-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                this.classList.add('active');
+                
+                // Switch chart type with animation
+                switchChartType(chartType);
+            });
+        });
+
+        // Replace the existing switchChartType function with this enhanced version
+function switchChartType(type) {
+    if (!chartData) return;
+    
+    // If same type, do nothing
+    if (type === currentChartType) return;
+    
+    currentChartType = type;
+    
+    // Add animation class to container
+    const chartContainer = document.getElementById('toxicity-chart').parentElement;
+    const canvas = document.getElementById('toxicity-chart');
+    
+    // Add fade-out animation
+    chartContainer.style.opacity = '0.5';
+    chartContainer.style.transform = 'scale(0.95)';
+    
+    // Use requestAnimationFrame for smooth animation
+    requestAnimationFrame(() => {
+        // Destroy previous chart
+        if (toxicityChart) {
+            toxicityChart.destroy();
+        }
+        
+        // Create new chart with updated type
+        createChart(chartData, type);
+        
+        // Animate back in with a bounce effect
+        setTimeout(() => {
+            chartContainer.style.opacity = '1';
+            chartContainer.style.transform = 'scale(1)';
+            chartContainer.style.transition = 'all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+        }, 100);
+    });
+}
+
+// Update the createChart function to include more animation options
+function createChart(results, type = 'bar') {
+    const ctx = document.getElementById('toxicity-chart').getContext('2d');
+    const labels = results.map(r => r.label);
+    const scores = results.map(r => r.score);
+    
+    const backgroundColors = scores.map(score => 
+        score > 0.75 ? '#ff6b6b' : 
+        score > 0.5 ? '#ffa5a5' : 
+        score > 0.25 ? '#4ecdc4' : '#a3eae4'
+    );
+    
+    const borderColors = scores.map(score =>
+        score > 0.75 ? '#c62828' : 
+        score > 0.5 ? '#e57373' : 
+        score > 0.25 ? '#26a69a' : '#4db6ac'
+    );
+    
+    // Animation configurations based on chart type
+    let animationConfig = {};
+    
+    if (type === 'bar') {
+        animationConfig = {
+            duration: 1000,
+            easing: 'easeOutQuart',
+            animations: {
+                y: {
+                    type: 'number',
+                    from: 0,
+                    duration: 1000,
+                    easing: 'easeOutQuart'
+                }
+            }
+        };
+    } else if (type === 'pie') {
+        animationConfig = {
+            duration: 1000,
+            easing: 'easeOutQuart',
+            animations: {
+                angle: {
+                    type: 'number',
+                    from: 0,
+                    duration: 1000,
+                    easing: 'easeOutQuart'
+                }
+            }
+        };
+    }
+    
+    // Common chart options
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: animationConfig,
+        plugins: {
+            legend: {
+                position: 'top',
+                labels: {
+                    usePointStyle: true,
+                    padding: 20,
+                    font: {
+                        size: 12
+                    }
+                }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return `${context.label}: ${context.raw.toFixed(4)}`;
+                    }
+                },
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleFont: {
+                    size: 14
+                },
+                bodyFont: {
+                    size: 12
+                },
+                padding: 10,
+                cornerRadius: 5
+            }
+        }
+    };
+    
+    if (type === 'bar') {
+        toxicityChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Toxicity Score',
+                    data: scores,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    barPercentage: 0.7,
+                    categoryPercentage: 0.8
+                }]
+            },
+            options: {
+                ...commonOptions,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1.0,
+                        title: {
+                            display: true,
+                            text: 'Confidence Score',
+                            font: {
+                                weight: 'bold'
+                            }
+                        },
+                        ticks: {
+                            stepSize: 0.2
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Toxicity Categories',
+                            font: {
+                                weight: 'bold'
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } else if (type === 'pie') {
+        toxicityChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: scores,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    hoverOffset: 15
+                }]
+            },
+            options: {
+                ...commonOptions,
+                plugins: {
+                    ...commonOptions.plugins,
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const percentage = Math.round(value * 100) + '%';
+                                return `${label}: ${percentage} (${value.toFixed(4)})`;
+                            }
+                        },
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleFont: {
+                            size: 14
+                        },
+                        bodyFont: {
+                            size: 12
+                        },
+                        padding: 10,
+                        cornerRadius: 5
+                    }
+                },
+                elements: {
+                    arc: {
+                        borderWidth: 2
+                    }
+                }
+            }
+        });
+    }
+    
+    // Add a subtle glow effect to the chart container
+    const chartContainer = document.querySelector('.chart-container');
+    chartContainer.style.boxShadow = '0 5px 15px rgba(0, 0, 0, 0.1)';
+    chartContainer.style.transition = 'box-shadow 0.3s ease';
+    
+    // Add hover effect to chart container
+    chartContainer.addEventListener('mouseenter', () => {
+        chartContainer.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.15)';
+    });
+    
+    chartContainer.addEventListener('mouseleave', () => {
+        chartContainer.style.boxShadow = '0 5px 15px rgba(0, 0, 0, 0.1)';
+    });
+}
+
+// Add this CSS for enhanced chart animations
+const style = document.createElement('style');
+style.textContent = `
+    .chart-container {
+        transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--container-bg);
+        padding: 10px;
+    }
+    
+    .chart-toggle {
+        transition: all 0.3s ease;
+    }
+    
+    .chart-toggle-btn {
+        transition: all 0.3s ease, transform 0.2s ease;
+    }
+    
+    .chart-toggle-btn:hover {
+        transform: translateY(-2px);
+    }
+    
+    .chart-toggle-btn.active {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    
+    @keyframes chartFadeIn {
+        0% { 
+            opacity: 0;
+            transform: scale(0.9) rotate(-2deg);
+        }
+        100% { 
+            opacity: 1;
+            transform: scale(1) rotate(0);
+        }
+    }
+    
+    .chart-fade-in {
+        animation: chartFadeIn 0.6s ease-out forwards;
+    }
+    
+    @keyframes chartSlide {
+        0% { 
+            opacity: 0;
+            transform: translateX(20px);
+        }
+        100% { 
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+    
+    .chart-slide {
+        animation: chartSlide 0.5s ease-out forwards;
+    }
+`;
+document.head.appendChild(style);
+
+// Update the chart toggle event listeners to use the new animations
+document.querySelectorAll('.chart-toggle-btn').forEach(button => {
+    button.addEventListener('click', function() {
+        const chartType = this.getAttribute('data-type');
+        if (chartType === currentChartType) return;
+        
+        // Update active button with animation
+        document.querySelectorAll('.chart-toggle-btn').forEach(btn => {
+            btn.classList.remove('active');
+            btn.style.transform = '';
+        });
+        this.classList.add('active');
+        this.style.transform = 'scale(1.05)';
+        
+        // Add animation class to chart container
+        const chartContainer = document.querySelector('.chart-container');
+        chartContainer.classList.add('chart-fade-in');
+        
+        // Switch chart type
+        switchChartType(chartType);
+        
+        // Remove animation class after animation completes
+        setTimeout(() => {
+            chartContainer.classList.remove('chart-fade-in');
+            this.style.transform = '';
+        }, 600);
+    });
+});
+
+        // Helper function to escape HTML for safe rendering
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

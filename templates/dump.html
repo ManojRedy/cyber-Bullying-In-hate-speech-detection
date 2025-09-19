@@ -1,0 +1,2709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hate Speech Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-gradient"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #333;
+            --container-bg: white;
+            --border-color: #ddd;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --toxic-color: #c62828;
+            --toxic-bg: #ffebee;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #f5f5f5;
+            --container-bg: #2d2d2d;
+            --border-color: #444;
+            --primary-color: #4a90e2;
+            --primary-hover: #357abd;
+            --toxic-color: #ff5252;
+            --toxic-bg: rgba(255, 82, 82, 0.1);
+            --success-color: #4caf50;
+            --warning-color: #ff9800;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .container {
+            background: var(--container-bg);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transform: translateY(0);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .container:hover {
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            animation: fadeIn 0.8s ease;
+        }
+
+        h1 {
+            color: var(--text-color);
+            margin: 0;
+            font-size: 2.2rem;
+            background: linear-gradient(45deg, var(--primary-color), var(--toxic-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            display: inline-block;
+        }
+
+        .theme-toggle {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            background: var(--container-bg);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.2);
+        }
+
+        button {
+            background: var(--primary-color);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .results {
+            margin-top: 30px;
+            display: none;
+            animation: slideIn 0.5s ease;
+        }
+
+        .toxic-warning {
+            background: var(--toxic-bg);
+            color: var(--toxic-color);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 5px solid var(--toxic-color);
+            animation: pulse 1.5s infinite;
+            display: flex;
+            align-items: center;
+        }
+
+        .toxic-warning::before {
+            content: "⚠️";
+            font-size: 24px;
+            margin-right: 15px;
+        }
+
+        .safe-message {
+            background: rgba(40, 167, 69, 0.1);
+            color: var(--success-color);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 5px solid var(--success-color);
+            display: flex;
+            align-items: center;
+        }
+
+        .safe-message::before {
+            content: "✅";
+            font-size: 24px;
+            margin-right: 15px;
+        }
+
+        .result-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s ease;
+        }
+
+        .result-item:hover {
+            background-color: rgba(0,0,0,0.03);
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .score-bar {
+            width: 100px;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-left: 15px;
+        }
+
+        .score-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 1s ease-out;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading-dots {
+            display: inline-block;
+            position: relative;
+            width: 80px;
+            height: 20px;
+        }
+
+        .loading-dots div {
+            position: absolute;
+            top: 0;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            animation-timing-function: cubic-bezier(0, 1, 1, 0);
+        }
+
+        .loading-dots div:nth-child(1) {
+            left: 8px;
+            animation: loading-dots1 0.6s infinite;
+        }
+
+        .loading-dots div:nth-child(2) {
+            left: 8px;
+            animation: loading-dots2 0.6s infinite;
+        }
+
+        .loading-dots div:nth-child(3) {
+            left: 32px;
+            animation: loading-dots2 0.6s infinite;
+        }
+
+        .loading-dots div:nth-child(4) {
+            left: 56px;
+            animation: loading-dots3 0.6s infinite;
+        }
+
+        .chart-container {
+            margin: 30px 0;
+            height: 350px;
+            position: relative;
+        }
+
+        .action-buttons {
+            margin: 25px 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .copy-btn {
+            background: var(--success-color);
+        }
+
+        .copy-btn:hover {
+            background: #218838;
+        }
+
+        .history-btn {
+            background: #6c757d;
+        }
+
+        .history-btn:hover {
+            background: #545b62;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            background-color: var(--container-bg);
+            padding: 25px;
+            border-radius: 15px;
+            width: 85%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            transform: scale(0.9);
+            animation: zoomIn 0.3s ease forwards;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: var(--text-color);
+            transition: transform 0.2s ease;
+        }
+
+        .close-btn:hover {
+            transform: rotate(90deg);
+        }
+
+        .history-item {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 15px;
+            border-radius: 10px;
+            background-color: var(--bg-color);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .history-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .history-text {
+            margin-bottom: 15px;
+            padding: 15px;
+            background-color: var(--container-bg);
+            border-radius: 8px;
+            border-left: 5px solid var(--primary-color);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .history-text::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+            background: linear-gradient(to bottom, var(--primary-color), transparent);
+            opacity: 0.5;
+        }
+
+        .history-results {
+            font-size: 14px;
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .history-tag {
+            background: var(--primary-color);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        .clear-history-btn {
+            background: #dc3545;
+            margin-top: 25px;
+        }
+
+        .clear-history-btn:hover {
+            background: #c82333;
+        }
+
+        .no-history {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+
+        .no-history::before {
+            content: "📊";
+            font-size: 50px;
+            display: block;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { 
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes zoomIn {
+            from { transform: scale(0.9); }
+            to { transform: scale(1); }
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(198, 40, 40, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0); }
+        }
+
+        @keyframes loading-dots1 {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes loading-dots3 {
+            0% { transform: scale(1); }
+            100% { transform: scale(0); }
+        }
+
+        @keyframes loading-dots2 {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(24px, 0); }
+        }
+
+        @keyframes barFill {
+            from { width: 0%; }
+        }
+
+        /* Confetti animation */
+        .confetti {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            opacity: 0;
+            z-index: 1001;
+            animation: confetti-fall 5s linear forwards;
+        }
+
+        @keyframes confetti-fall {
+            0% {
+                transform: translateY(-100px) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        /* Floating animation for main container */
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .floating {
+            animation: float 6s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container floating">
+        <div class="header">
+            <h1>🚨 Hate Speech Detector</h1>
+            <button class="theme-toggle" id="theme-toggle">🌙 Dark Mode</button>
+        </div>
+        
+        <p>Enter text below to analyze it for toxic content:</p>
+        
+        <form id="analysis-form">
+            <textarea name="text" placeholder="Type or paste text here..." required></textarea>
+            <div>
+                <button type="submit">Analyze Text</button>
+                <button type="button" class="history-btn" id="history-btn">View History</button>
+            </div>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="loading-dots">
+                <div></div><div></div><div></div><div></div>
+            </div>
+        </div>
+
+        <div class="results" id="results">
+            <h2>Analysis Results:</h2>
+            <div id="toxic-warning" class="toxic-warning" style="display: none;">
+                <strong>WARNING:</strong> This text has been flagged as potentially harmful!
+            </div>
+            
+            <div id="safe-message" class="safe-message" style="display: none;">
+                <strong>GOOD NEWS:</strong> This text appears to be free of hate speech!
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="toxicity-chart"></canvas>
+            </div>
+            
+            <div id="results-list"></div>
+            
+            <div class="action-buttons">
+                <button class="copy-btn" onclick="copyResults()">📋 Copy Results</button>
+                <button class="history-btn" onclick="showHistoryModal()">📊 View History</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal" id="history-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Analysis History</h2>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <div id="history-list">
+                <div class="no-history">No analysis history found.</div>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="clear-history-btn" id="clear-history">Clear History</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+        
+        // Load saved theme or use system preference
+        const currentTheme = localStorage.getItem('theme') || 
+                            (prefersDarkScheme.matches ? 'dark' : 'light');
+        
+        if (currentTheme === 'dark') {
+            document.body.setAttribute('data-theme', 'dark');
+            themeToggle.textContent = '☀️ Light Mode';
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            let theme = 'light';
+            if (document.body.getAttribute('data-theme') !== 'dark') {
+                document.body.setAttribute('data-theme', 'dark');
+                themeToggle.textContent = '☀️ Light Mode';
+                theme = 'dark';
+            } else {
+                document.body.removeAttribute('data-theme');
+                themeToggle.textContent = '🌙 Dark Mode';
+            }
+            localStorage.setItem('theme', theme);
+        });
+
+        let toxicityChart = null;
+
+        document.getElementById('analysis-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const resultsList = document.getElementById('results-list');
+            const warning = document.getElementById('toxic-warning');
+            const safeMessage = document.getElementById('safe-message');
+            
+            // Show loading, hide previous results
+            loading.style.display = 'block';
+            results.style.display = 'none';
+            warning.style.display = 'none';
+            safeMessage.style.display = 'none';
+            
+            // Destroy previous chart if exists
+            if (toxicityChart) {
+                toxicityChart.destroy();
+            }
+            
+            try {
+                // Simulate API call with timeout for demo purposes
+                // In a real application, you would call your backend API
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // Mock response data - replace with actual API response
+                const mockResponse = {
+                    success: true,
+                    results: [
+                        {label: "Toxicity", score: Math.random(), percentage: Math.floor(Math.random() * 100) + "%"},
+                        {label: "Severe Toxicity", score: Math.random() * 0.5, percentage: Math.floor(Math.random() * 60) + "%"},
+                        {label: "Identity Attack", score: Math.random() * 0.7, percentage: Math.floor(Math.random() * 70) + "%"},
+                        {label: "Insult", score: Math.random(), percentage: Math.floor(Math.random() * 100) + "%"},
+                        {label: "Profanity", score: Math.random(), percentage: Math.floor(Math.random() * 100) + "%"},
+                        {label: "Threat", score: Math.random() * 0.3, percentage: Math.floor(Math.random() * 30) + "%"}
+                    ],
+                    is_toxic: Math.random() > 0.5
+                };
+                
+                // For demo purposes, we're using mock data
+                const data = mockResponse;
+                
+                if (data.success) {
+                    // Display results
+                    resultsList.innerHTML = '';
+                    
+                    data.results.forEach(item => {
+                        const resultItem = document.createElement('div');
+                        resultItem.className = 'result-item';
+                        
+                        const scoreBar = document.createElement('div');
+                        scoreBar.className = 'score-bar';
+                        
+                        const scoreFill = document.createElement('div');
+                        scoreFill.className = 'score-fill';
+                        scoreFill.style.width = '0%'; // Start at 0 for animation
+                        scoreFill.style.background = item.score > 0.7 ? 
+                            'linear-gradient(90deg, #ff6b6b, #c62828)' : 
+                            'linear-gradient(90deg, #4ecdc4, #26a69a)';
+                        
+                        scoreBar.appendChild(scoreFill);
+                        
+                        resultItem.innerHTML = `
+                            <div>
+                                <strong>${item.label}:</strong> 
+                                <span>${item.percentage}</span>
+                            </div>
+                        `;
+                        
+                        resultItem.appendChild(scoreBar);
+                        resultsList.appendChild(resultItem);
+                        
+                        // Animate the score bar
+                        setTimeout(() => {
+                            scoreFill.style.width = `${item.score * 100}%`;
+                        }, 100);
+                    });
+                    
+                    // Create chart
+                    createChart(data.results);
+                    
+                    // Show appropriate message
+                    if (data.is_toxic === true) {
+                        warning.style.display = 'flex';
+                        createConfetti(true);
+                    } else {
+                        safeMessage.style.display = 'flex';
+                        createConfetti(false);
+                    }
+                    
+                    results.style.display = 'block';
+                    
+                    // Add to history
+                    addToHistory(formData.get('text'), data.results, data.is_toxic);
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error occurred'));
+                }
+                
+            } catch (error) {
+                alert('An error occurred: ' + error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+
+        function createChart(results) {
+            const ctx = document.getElementById('toxicity-chart').getContext('2d');
+            const labels = results.map(r => r.label);
+            const scores = results.map(r => r.score);
+            
+            // Define gradient for chart bars
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(78, 205, 196, 0.8)');
+            gradient.addColorStop(1, 'rgba(38, 166, 154, 0.2)');
+            
+            const toxicGradient = ctx.createLinearGradient(0, 0, 0, 400);
+            toxicGradient.addColorStop(0, 'rgba(255, 107, 107, 0.8)');
+            toxicGradient.addColorStop(1, 'rgba(198, 40, 40, 0.2)');
+            
+            toxicityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Toxicity Score',
+                        data: scores,
+                        backgroundColor: scores.map(score => 
+                            score > 0.7 ? toxicGradient : gradient
+                        ),
+                        borderColor: scores.map(score =>
+                            score > 0.7 ? '#c62828' : '#26a69a'
+                        ),
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        hoverBackgroundColor: scores.map(score =>
+                            score > 0.7 ? 'rgba(198, 40, 40, 0.8)' : 'rgba(38, 166, 154, 0.8)'
+                        )
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 2000,
+                        easing: 'easeOutQuart'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1.0,
+                            title: {
+                                display: true,
+                                text: 'Confidence Score',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Toxicity Categories',
+                                font: {
+                                    size: 14,
+                                    weight: 'bold'
+                                }
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            titleFont: {
+                                size: 14
+                            },
+                            bodyFont: {
+                                size: 14
+                            },
+                            padding: 10,
+                            cornerRadius: 8
+                        }
+                    }
+                }
+            });
+        }
+
+        function copyResults() {
+            const resultsText = Array.from(document.querySelectorAll('.result-item'))
+                .map(item => {
+                    const label = item.querySelector('strong').textContent;
+                    const percentage = item.querySelector('span').textContent;
+                    return `${label} ${percentage}`;
+                })
+                .join('\n');
+            
+            navigator.clipboard.writeText(resultsText)
+                .then(() => {
+                    // Show a subtle confirmation
+                    const copyBtn = document.querySelector('.copy-btn');
+                    const originalText = copyBtn.textContent;
+                    copyBtn.textContent = '✓ Copied!';
+                    setTimeout(() => {
+                        copyBtn.textContent = originalText;
+                    }, 2000);
+                })
+                .catch(err => alert('Failed to copy: ' + err));
+        }
+
+        // Create confetti effect
+        function createConfetti(isToxic) {
+            const colors = isToxic ? ['#ff5252', '#c62828', '#ff6b6b'] : ['#4caf50', '#2e7d32', '#66bb6a'];
+            
+            for (let i = 0; i < 50; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti';
+                confetti.style.left = Math.random() * 100 + 'vw';
+                confetti.style.width = Math.random() * 10 + 5 + 'px';
+                confetti.style.height = Math.random() * 10 + 5 + 'px';
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.animationDelay = Math.random() * 2 + 's';
+                document.body.appendChild(confetti);
+                
+                // Remove confetti after animation completes
+                setTimeout(() => {
+                    confetti.remove();
+                }, 5000);
+            }
+        }
+
+        // History modal functionality
+        const historyModal = document.getElementById('history-modal');
+        const historyBtn = document.getElementById('history-btn');
+        const closeModalBtn = document.getElementById('close-modal');
+        const historyList = document.getElementById('history-list');
+        const clearHistoryBtn = document.getElementById('clear-history');
+
+        historyBtn.addEventListener('click', showHistoryModal);
+        closeModalBtn.addEventListener('click', closeHistoryModal);
+        clearHistoryBtn.addEventListener('click', clearHistory);
+
+        function showHistoryModal() {
+            loadHistory();
+            historyModal.style.display = 'flex';
+        }
+
+        function closeHistoryModal() {
+            historyModal.style.display = 'none';
+        }
+
+        // Close modal when clicking outside the content
+        window.addEventListener('click', function(event) {
+            if (event.target === historyModal) {
+                closeHistoryModal();
+            }
+        });
+
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="no-history">No analysis history found.</div>';
+                return;
+            }
+            
+            historyList.innerHTML = '';
+            history.forEach((item, index) => {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'history-item';
+                
+                const date = new Date(item.timestamp);
+                const formattedDate = date.toLocaleString();
+                
+                historyItem.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <strong>${formattedDate}</strong>
+                        ${item.is_toxic ? 
+                            '<span style="color: #c62828; font-weight: bold; background: rgba(198, 40, 40, 0.1); padding: 5px 10px; border-radius: 20px;">🚨 TOXIC</span>' : 
+                            '<span style="color: #388e3c; font-weight: bold; background: rgba(56, 142, 60, 0.1); padding: 5px 10px; border-radius: 20px;">✅ CLEAN</span>'}
+                    </div>
+                    <div class="history-text">${escapeHtml(item.text)}</div>
+                    <div class="history-results">
+                        ${item.results.map(result => 
+                            `<span class="history-tag" style="background: ${result.score > 0.7 ? '#c62828' : '#4a90e2'}">
+                                ${result.label}: ${result.percentage}
+                            </span>`
+                        ).join('')}
+                    </div>
+                `;
+                
+                historyList.appendChild(historyItem);
+            });
+        }
+
+        function addToHistory(text, results, isToxic) {
+            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            
+            // Add new analysis to history
+            history.unshift({
+                text: text,
+                results: results,
+                is_toxic: isToxic,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Keep only the last 20 analyses
+            if (history.length > 20) {
+                history.pop();
+            }
+            
+            localStorage.setItem('analysisHistory', JSON.stringify(history));
+        }
+
+        function clearHistory() {
+            if (confirm('Are you sure you want to clear all history?')) {
+                localStorage.removeItem('analysisHistory');
+                loadHistory(); // Refresh the history display
+            }
+        }
+
+        // Helper function to escape HTML for safe rendering
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
+*******************************************************************
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hate Speech Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+    <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #333;
+            --container-bg: white;
+            --border-color: #ddd;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --toxic-color: #c62828;
+            --toxic-bg: #ffebee;
+            --safe-color: #388e3c;
+            --safe-bg: #e8f5e9;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #f5f5f5;
+            --container-bg: #2d2d2d;
+            --border-color: #444;
+            --primary-color: #4a90e2;
+            --primary-hover: #357abd;
+            --toxic-color: #ef5350;
+            --toxic-bg: rgba(239, 83, 80, 0.15);
+            --safe-color: #66bb6a;
+            --safe-bg: rgba(102, 187, 106, 0.15);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .container {
+            background: var(--container-bg);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transform: translateY(0);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .container:hover {
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: var(--text-color);
+            margin: 0;
+            background: linear-gradient(45deg, var(--primary-color), #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            display: inline-block;
+        }
+
+        .theme-toggle {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            background: var(--container-bg);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.25);
+        }
+
+        button {
+            background: var(--primary-color);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .results {
+            margin-top: 20px;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .toxic-warning {
+            background: var(--toxic-bg);
+            color: var(--toxic-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid var(--toxic-color);
+            animation: pulse 2s infinite;
+        }
+
+        .safe-message {
+            background: var(--safe-bg);
+            color: var(--safe-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid var(--safe-color);
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(198, 40, 40, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0); }
+        }
+
+        .result-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.3s ease;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-item:hover {
+            background-color: rgba(0,0,0,0.03);
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading-dots {
+            display: inline-block;
+            position: relative;
+            width: 80px;
+            height: 20px;
+        }
+
+        .loading-dots div {
+            position: absolute;
+            top: 0;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            animation-timing-function: cubic-bezier(0, 1, 1, 0);
+        }
+
+        .loading-dots div:nth-child(1) {
+            left: 8px;
+            animation: loading-dots1 0.6s infinite;
+        }
+
+        .loading-dots div:nth-child(2) {
+            left: 8px;
+            animation: loading-dots2 0.6s infinite;
+        }
+
+        .loading-dots div:nth-child(3) {
+            left: 32px;
+            animation: loading-dots2 0.6s infinite;
+        }
+
+        .loading-dots div:nth-child(4) {
+            left: 56px;
+            animation: loading-dots3 0.6s infinite;
+        }
+
+        @keyframes loading-dots1 {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes loading-dots3 {
+            0% { transform: scale(1); }
+            100% { transform: scale(0); }
+        }
+
+        @keyframes loading-dots2 {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(24px, 0); }
+        }
+
+        .chart-container {
+            margin: 30px 0;
+            height: 300px;
+            position: relative;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.8s ease, transform 0.8s ease;
+        }
+
+        .chart-container.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .action-buttons {
+            margin: 30px 0 10px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .copy-btn {
+            background: #28a745;
+        }
+
+        .copy-btn:hover {
+            background: #218838;
+        }
+
+        .history-btn {
+            background: #6c757d;
+        }
+
+        .history-btn:hover {
+            background: #545b62;
+        }
+
+        .chart-toggle {
+            background: #17a2b8;
+        }
+
+        .chart-toggle:hover {
+            background: #138496;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background-color: var(--container-bg);
+            padding: 25px;
+            border-radius: 12px;
+            width: 85%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            transform: scale(0.9);
+            animation: zoomIn 0.3s ease forwards;
+        }
+
+        @keyframes zoomIn {
+            to { transform: scale(1); }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: var(--text-color);
+            transition: transform 0.3s ease;
+        }
+
+        .close-btn:hover {
+            transform: rotate(90deg);
+        }
+
+        .history-item {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 10px;
+            border-radius: 8px;
+            background-color: var(--bg-color);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .history-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .history-text {
+            margin-bottom: 10px;
+            padding: 12px;
+            background-color: var(--container-bg);
+            border-radius: 6px;
+            border-left: 4px solid var(--primary-color);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .history-text::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transform: translateX(-100%);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            100% { transform: translateX(100%); }
+        }
+
+        .history-results {
+            font-size: 14px;
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .history-result-item {
+            background: var(--container-bg);
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            border: 1px solid var(--border-color);
+        }
+
+        .clear-history-btn {
+            background: #dc3545;
+            margin-top: 20px;
+        }
+
+        .clear-history-btn:hover {
+            background: #c82333;
+        }
+
+        .no-history {
+            text-align: center;
+            padding: 30px;
+            color: #6c757d;
+        }
+
+        .chart-type-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .chart-type-btn {
+            background: var(--container-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            padding: 8px 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .chart-type-btn:first-child {
+            border-radius: 8px 0 0 8px;
+        }
+
+        .chart-type-btn:last-child {
+            border-radius: 0 8px 8px 0;
+        }
+
+        .chart-type-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .pie-chart-container {
+            display: none;
+            margin: 30px 0;
+            height: 300px;
+            position: relative;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.8s ease, transform 0.8s ease;
+        }
+
+        .pie-chart-container.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .score-bar {
+            height: 8px;
+            border-radius: 4px;
+            background: #e9ecef;
+            margin-top: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .score-fill {
+            height: 100%;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #4ecdc4, #007bff);
+            transition: width 1s ease-out;
+            width: 0%;
+        }
+
+        .floating-label {
+            position: absolute;
+            background: var(--text-color);
+            color: var(--bg-color);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            top: -25px;
+            z-index: 10;
+        }
+
+        .score-fill:hover .floating-label {
+            opacity: 1;
+        }
+
+        .toxicity-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        .high-toxicity {
+            background-color: var(--toxic-bg);
+            color: var(--toxic-color);
+        }
+
+        .medium-toxicity {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .low-toxicity {
+            background-color: var(--safe-bg);
+            color: var(--safe-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="animate__animated animate__fadeIn">🚨 Hate Speech Detector</h1>
+            <button class="theme-toggle" id="theme-toggle">🌙 Dark Mode</button>
+        </div>
+        
+        <p class="animate__animated animate__fadeIn animate__delay-1s">Enter text below to analyze it for toxic content:</p>
+        
+        <form id="analysis-form" class="animate__animated animate__fadeIn animate__delay-1s">
+            <textarea name="text" placeholder="Type or paste text here..." required></textarea>
+            <div>
+                <button type="submit">Analyze Text</button>
+                <button type="button" class="history-btn" id="history-btn">View History</button>
+            </div>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="loading-dots">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <p>Analyzing your text... 🔍</p>
+        </div>
+
+        <div class="results" id="results">
+            <h2>Analysis Results:</h2>
+            <div id="toxic-warning" class="toxic-warning" style="display: none;">
+                <strong>🚨 WARNING:</strong> This text has been flagged as potentially harmful!
+            </div>
+            
+            <div id="safe-message" class="safe-message" style="display: none;">
+                <strong>✅ This text appears to be safe.</strong> No hate speech detected.
+            </div>
+            
+            <div class="chart-type-container">
+                <button class="chart-type-btn active" data-chart="bar">Bar Chart</button>
+                <button class="chart-type-btn" data-chart="pie">Pie Chart</button>
+            </div>
+            
+            <div class="chart-container" id="bar-chart-container">
+                <canvas id="toxicity-chart"></canvas>
+            </div>
+            
+            <div class="pie-chart-container" id="pie-chart-container">
+                <canvas id="toxicity-pie-chart"></canvas>
+            </div>
+            
+            <div id="results-list"></div>
+            
+            <div class="action-buttons">
+                <button class="copy-btn" onclick="copyResults()">📋 Copy Results</button>
+                <button class="chart-toggle" onclick="toggleCharts()">🔄 Switch Chart View</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal" id="history-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Analysis History</h2>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <div id="history-list">
+                <div class="no-history">No analysis history found.</div>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="clear-history-btn" id="clear-history">Clear History</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+        
+        // Load saved theme or use system preference
+        const currentTheme = localStorage.getItem('theme') || 
+                            (prefersDarkScheme.matches ? 'dark' : 'light');
+        
+        if (currentTheme === 'dark') {
+            document.body.setAttribute('data-theme', 'dark');
+            themeToggle.textContent = '☀️ Light Mode';
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            let theme = 'light';
+            if (document.body.getAttribute('data-theme') !== 'dark') {
+                document.body.setAttribute('data-theme', 'dark');
+                themeToggle.textContent = '☀️ Light Mode';
+                theme = 'dark';
+            } else {
+                document.body.removeAttribute('data-theme');
+                themeToggle.textContent = '🌙 Dark Mode';
+            }
+            localStorage.setItem('theme', theme);
+        });
+
+        let toxicityChart = null;
+        let toxicityPieChart = null;
+        let currentChartType = 'bar';
+
+        document.getElementById('analysis-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const text = formData.get('text');
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const resultsList = document.getElementById('results-list');
+            const warning = document.getElementById('toxic-warning');
+            const safeMessage = document.getElementById('safe-message');
+            
+            // Show loading, hide previous results
+            loading.style.display = 'block';
+            results.style.display = 'none';
+            warning.style.display = 'none';
+            safeMessage.style.display = 'none';
+            
+            // Check if we have this text in history to simulate consistent results
+            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            const previousResult = history.find(item => item.text === text);
+            
+            // Destroy previous charts if they exist
+            if (toxicityChart) {
+                toxicityChart.destroy();
+            }
+            if (toxicityPieChart) {
+                toxicityPieChart.destroy();
+            }
+            
+            try {
+                // Simulate API call delay
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                let data;
+                if (previousResult) {
+                    // Use previous result for consistent behavior with same input
+                    data = {
+                        success: true,
+                        results: previousResult.results,
+                        is_toxic: previousResult.is_toxic
+                    };
+                } else {
+                    // Simulate API response with random data for new inputs
+                    const labels = ['Toxicity', 'Severe Toxicity', 'Identity Attack', 'Insult', 'Profanity', 'Threat'];
+                    const results = labels.map(label => {
+                        const score = Math.random() * 0.8; // Mostly lower scores
+                        // Increase chance of higher scores for certain provocative words
+                        if (text.toLowerCase().includes('hate') && label === 'Toxicity') score += 0.3;
+                        if (text.toLowerCase().includes('kill') && label === 'Threat') score += 0.4;
+                        if (text.toLowerCase().includes('stupid') && label === 'Insult') score += 0.2;
+                        
+                        return {
+                            label: label,
+                            score: Math.min(1, score),
+                            percentage: `${Math.round(Math.min(1, score) * 100)}%`
+                        };
+                    });
+                    
+                    const isToxic = results.some(r => r.score > 0.75);
+                    
+                    data = {
+                        success: true,
+                        results: results,
+                        is_toxic: isToxic
+                    };
+                }
+                
+                if (data.success) {
+                    // Display results with animation
+                    resultsList.innerHTML = '';
+                    
+                    data.results.forEach(item => {
+                        const resultItem = document.createElement('div');
+                        resultItem.className = 'result-item animate__animated animate__fadeIn';
+                        
+                        // Add toxicity badge based on score
+                        let badge = '';
+                        if (item.score > 0.75) {
+                            badge = `<span class="toxicity-badge high-toxicity">High</span>`;
+                        } else if (item.score > 0.5) {
+                            badge = `<span class="toxicity-badge medium-toxicity">Medium</span>`;
+                        } else if (item.score > 0.25) {
+                            badge = `<span class="toxicity-badge low-toxicity">Low</span>`;
+                        }
+                        
+                        resultItem.innerHTML = `
+                            <div>
+                                <strong>${item.label}:</strong> ${item.percentage}
+                            </div>
+                            ${badge}
+                            <div class="score-bar">
+                                <div class="score-fill" data-score="${item.score}" style="width: 0%"></div>
+                            </div>
+                        `;
+                        resultsList.appendChild(resultItem);
+                    });
+                    
+                    // Create charts
+                    createBarChart(data.results);
+                    createPieChart(data.results);
+                    
+                    // Show appropriate message
+                    if (data.is_toxic === true) {
+                        warning.style.display = 'block';
+                    } else {
+                        safeMessage.style.display = 'block';
+                    }
+                    
+                    // Animate score bars
+                    setTimeout(() => {
+                        document.querySelectorAll('.score-fill').forEach(bar => {
+                            const score = parseFloat(bar.getAttribute('data-score'));
+                            bar.style.width = `${score * 100}%`;
+                        });
+                    }, 300);
+                    
+                    // Show results with animation
+                    results.style.display = 'block';
+                    setTimeout(() => {
+                        results.style.opacity = 1;
+                        document.getElementById('bar-chart-container').classList.add('visible');
+                    }, 100);
+                    
+                    // Add to history if it's a new analysis
+                    if (!previousResult) {
+                        addToHistory(text, data.results, data.is_toxic);
+                    }
+                } else {
+                    alert('Error: ' + data.error);
+                }
+                
+            } catch (error) {
+                alert('An error occurred: ' + error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+
+        function createBarChart(results) {
+            const ctx = document.getElementById('toxicity-chart').getContext('2d');
+            const labels = results.map(r => r.label);
+            const scores = results.map(r => r.score);
+            
+            toxicityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Toxicity Score',
+                        data: scores,
+                        backgroundColor: scores.map(score => {
+                            if (score > 0.75) return '#ff6b6b';
+                            if (score > 0.5) return '#ffd166';
+                            return '#4ecdc4';
+                        }),
+                        borderColor: scores.map(score => {
+                            if (score > 0.75) return '#c62828';
+                            if (score > 0.5) return '#f9a825';
+                            return '#26a69a';
+                        }),
+                        borderWidth: 1,
+                        borderRadius: 5,
+                        hoverBackgroundColor: scores.map(score => {
+                            if (score > 0.75) return '#ff5252';
+                            if (score > 0.5) return '#ffca28';
+                            return '#26c6da';
+                        })
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1500,
+                        easing: 'easeOutQuart'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1.0,
+                            title: {
+                                display: true,
+                                text: 'Confidence Score',
+                                color: Chart.helpers.color('#666').alpha(0.8).rgbString()
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Toxicity Categories',
+                                color: Chart.helpers.color('#666').alpha(0.8).rgbString()
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            titleFont: {
+                                size: 14
+                            },
+                            bodyFont: {
+                                size: 14
+                            },
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${(context.raw * 100).toFixed(1)}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createPieChart(results) {
+            const ctx = document.getElementById('toxicity-pie-chart').getContext('2d');
+            const labels = results.map(r => r.label);
+            const scores = results.map(r => r.score);
+            
+            // Calculate weighted scores for pie chart (emphasize higher scores)
+            const weightedScores = scores.map(score => Math.pow(score, 2));
+            const total = weightedScores.reduce((sum, score) => sum + score, 0);
+            const percentages = weightedScores.map(score => (score / total) * 100);
+            
+            toxicityPieChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: percentages,
+                        backgroundColor: [
+                            '#ff6b6b', '#ff9e6b', '#4ecdc4', '#45b7d1', '#6b5b95', '#f9a825'
+                        ],
+                        borderColor: '#ffffff',
+                        borderWidth: 2,
+                        hoverOffset: 15
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1500,
+                        easing: 'easeOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                font: {
+                                    size: 12
+                                },
+                                color: Chart.helpers.color('#666').alpha(0.8).rgbString()
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            titleFont: {
+                                size: 14
+                            },
+                            bodyFont: {
+                                size: 14
+                            },
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw.toFixed(1);
+                                    const score = scores[context.dataIndex];
+                                    return `${label}: ${value}% (score: ${score.toFixed(3)})`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function toggleCharts() {
+            const barChartContainer = document.getElementById('bar-chart-container');
+            const pieChartContainer = document.getElementById('pie-chart-container');
+            const chartTypeBtns = document.querySelectorAll('.chart-type-btn');
+            
+            if (currentChartType === 'bar') {
+                // Switch to pie chart
+                barChartContainer.style.display = 'none';
+                pieChartContainer.style.display = 'block';
+                setTimeout(() => {
+                    pieChartContainer.classList.add('visible');
+                }, 50);
+                currentChartType = 'pie';
+                chartTypeBtns[0].classList.remove('active');
+                chartTypeBtns[1].classList.add('active');
+            } else {
+                // Switch to bar chart
+                pieChartContainer.style.display = 'none';
+                barChartContainer.style.display = 'block';
+                setTimeout(() => {
+                    barChartContainer.classList.add('visible');
+                }, 50);
+                currentChartType = 'bar';
+                chartTypeBtns[1].classList.remove('active');
+                chartTypeBtns[0].classList.add('active');
+            }
+        }
+
+        // Add event listeners to chart type buttons
+        document.querySelectorAll('.chart-type-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (this.dataset.chart !== currentChartType) {
+                    toggleCharts();
+                }
+            });
+        });
+
+        function copyResults() {
+            const resultsText = Array.from(document.querySelectorAll('.result-item'))
+                .map(item => {
+                    const label = item.querySelector('strong').textContent;
+                    const percentage = item.querySelector('div:first-child').textContent.replace(`${label}`, '').trim();
+                    return `${label} ${percentage}`;
+                })
+                .join('\n');
+            
+            navigator.clipboard.writeText(resultsText)
+                .then(() => {
+                    const btn = document.querySelector('.copy-btn');
+                    const originalText = btn.textContent;
+                    btn.textContent = '✅ Copied!';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                    }, 2000);
+                })
+                .catch(err => alert('Failed to copy: ' + err));
+        }
+
+        // History modal functionality
+        const historyModal = document.getElementById('history-modal');
+        const historyBtn = document.getElementById('history-btn');
+        const closeModalBtn = document.getElementById('close-modal');
+        const historyList = document.getElementById('history-list');
+        const clearHistoryBtn = document.getElementById('clear-history');
+
+        historyBtn.addEventListener('click', showHistoryModal);
+        closeModalBtn.addEventListener('click', closeHistoryModal);
+        clearHistoryBtn.addEventListener('click', clearHistory);
+
+        function showHistoryModal() {
+            loadHistory();
+            historyModal.style.display = 'flex';
+        }
+
+        function closeHistoryModal() {
+            historyModal.style.display = 'none';
+        }
+
+        // Close modal when clicking outside the content
+        window.addEventListener('click', function(event) {
+            if (event.target === historyModal) {
+                closeHistoryModal();
+            }
+        });
+
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="no-history">No analysis history found.</div>';
+                return;
+            }
+            
+            historyList.innerHTML = '';
+            history.forEach((item, index) => {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'history-item animate__animated animate__fadeIn';
+                historyItem.style.animationDelay = `${index * 0.1}s`;
+                
+                const date = new Date(item.timestamp);
+                const formattedDate = date.toLocaleString();
+                
+                historyItem.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <strong>${formattedDate}</strong>
+                        ${item.is_toxic ? '<span style="color: var(--toxic-color); font-weight: bold;">🚨 TOXIC</span>' : '<span style="color: var(--safe-color);">✅ CLEAN</span>'}
+                    </div>
+                    <div class="history-text">${escapeHtml(item.text)}</div>
+                    <div class="history-results">
+                        ${item.results.map(result => `
+                            <div class="history-result-item">
+                                ${result.label}: ${result.percentage}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // Add click event to load this analysis
+                historyItem.addEventListener('click', () => {
+                    document.querySelector('textarea[name="text"]').value = item.text;
+                    closeHistoryModal();
+                    document.getElementById('analysis-form').dispatchEvent(new Event('submit'));
+                });
+                
+                historyList.appendChild(historyItem);
+            });
+        }
+
+        function addToHistory(text, results, isToxic) {
+            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            
+            // Add new analysis to history
+            history.unshift({
+                text: text,
+                results: results,
+                is_toxic: isToxic,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Keep only the last 20 analyses
+            if (history.length > 20) {
+                history.pop();
+            }
+            
+            localStorage.setItem('analysisHistory', JSON.stringify(history));
+        }
+
+        function clearHistory() {
+            if (confirm('Are you sure you want to clear all history?')) {
+                localStorage.removeItem('analysisHistory');
+                loadHistory(); // Refresh the history display
+            }
+        }
+
+        // Helper function to escape HTML for safe rendering
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
+
+
+
+******************************************************************************************************************************************************
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hate Speech Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #333;
+            --container-bg: white;
+            --border-color: #ddd;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --toxic-color: #c62828;
+            --toxic-bg: #ffebee;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #f5f5f5;
+            --container-bg: #2d2d2d;
+            --border-color: #444;
+            --primary-color: #4a90e2;
+            --primary-hover: #357abd;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .container {
+            background: var(--container-bg);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: all 0.4s ease;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        .container:hover {
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            animation: fadeIn 1s ease-out;
+        }
+
+        h1 {
+            color: var(--text-color);
+            margin: 0;
+            animation: bounceIn 1s ease-out;
+        }
+
+        .theme-toggle {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: var(--primary-hover);
+            transform: scale(1.05);
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            background: var(--container-bg);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        textarea:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        button {
+            background: var(--primary-color);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 5px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.5);
+            opacity: 0;
+            border-radius: 100%;
+            transform: scale(1, 1) translate(-50%);
+            transform-origin: 50% 50%;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        button:active::after {
+            animation: ripple 1s ease-out;
+        }
+
+        .results {
+            margin-top: 20px;
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .toxic-warning {
+            background: var(--toxic-bg);
+            color: var(--toxic-color);
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid var(--toxic-color);
+            animation: shake 0.5s ease-in-out, pulse 2s infinite;
+        }
+
+        .result-item {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .result-item:hover {
+            background-color: rgba(0, 123, 255, 0.05);
+            transform: translateX(5px);
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+            animation: pulse 1.5s infinite;
+        }
+
+        .chart-container {
+            margin: 20px 0;
+            height: 300px;
+            animation: fadeIn 1s ease-out;
+        }
+
+        .action-buttons {
+            margin: 20px 0;
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .copy-btn {
+            background: #28a745;
+        }
+
+        .copy-btn:hover {
+            background: #218838;
+        }
+
+        .history-btn {
+            background: #6c757d;
+        }
+
+        .history-btn:hover {
+            background: #545b62;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .modal-content {
+            background-color: var(--container-bg);
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            animation: zoomIn 0.3s ease-out;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .close-btn:hover {
+            transform: rotate(90deg);
+            color: var(--primary-color);
+        }
+
+        .history-item {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 10px;
+            border-radius: 5px;
+            background-color: var(--bg-color);
+            transition: all 0.3s ease;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .history-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .history-text {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: var(--container-bg);
+            border-radius: 5px;
+            border-left: 4px solid var(--primary-color);
+            transition: all 0.3s ease;
+        }
+
+        .history-results {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .clear-history-btn {
+            background: #dc3545;
+            margin-top: 20px;
+        }
+
+        .clear-history-btn:hover {
+            background: #c82333;
+        }
+
+        .no-history {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+            animation: fadeIn 1s ease-out;
+        }
+
+        /* Animation Keyframes */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            60% { transform: scale(1.05); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes zoomIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+
+        @keyframes ripple {
+            0% { transform: scale(0, 0); opacity: 0.5; }
+            20% { transform: scale(25, 25); opacity: 0.3; }
+            100% { transform: scale(50, 50); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚨 Hate Speech Detector</h1>
+            <button class="theme-toggle" id="theme-toggle">🌙 Dark Mode</button>
+        </div>
+        
+        <p>Enter text below to analyze it for toxic content:</p>
+        
+        <form id="analysis-form">
+            <textarea name="text" placeholder="Type or paste text here..." required></textarea>
+            <div>
+                <button type="submit">Analyze Text</button>
+                <button type="button" class="history-btn" id="history-btn">View History</button>
+            </div>
+        </form>
+
+        <div class="loading" id="loading">
+            Analyzing... ⏳
+        </div>
+
+        <div class="results" id="results">
+            <h2>Analysis Results:</h2>
+            <div id="toxic-warning" class="toxic-warning" style="display: none;">
+                <strong>🚨 WARNING:</strong> This text has been flagged as potentially harmful!
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="toxicity-chart"></canvas>
+            </div>
+            
+            <div id="results-list"></div>
+            
+            <div class="action-buttons">
+                <button class="copy-btn" onclick="copyResults()">📋 Copy Results</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal" id="history-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Analysis History</h2>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <div id="history-list">
+                <div class="no-history">No analysis history found.</div>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="clear-history-btn" id="clear-history">Clear History</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+        
+        // Load saved theme or use system preference
+        const currentTheme = localStorage.getItem('theme') || 
+                            (prefersDarkScheme.matches ? 'dark' : 'light');
+        
+        if (currentTheme === 'dark') {
+            document.body.setAttribute('data-theme', 'dark');
+            themeToggle.textContent = '☀️ Light Mode';
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            let theme = 'light';
+            if (document.body.getAttribute('data-theme') !== 'dark') {
+                document.body.setAttribute('data-theme', 'dark');
+                themeToggle.textContent = '☀️ Light Mode';
+                theme = 'dark';
+            } else {
+                document.body.removeAttribute('data-theme');
+                themeToggle.textContent = '🌙 Dark Mode';
+            }
+            localStorage.setItem('theme', theme);
+        });
+
+        let toxicityChart = null;
+
+        document.getElementById('analysis-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const resultsList = document.getElementById('results-list');
+            const warning = document.getElementById('toxic-warning');
+            
+            // Show loading, hide previous results
+            loading.style.display = 'block';
+            results.style.display = 'none';
+            warning.style.display = 'none';
+            
+            // Destroy previous chart if exists
+            if (toxicityChart) {
+                toxicityChart.destroy();
+            }
+            
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Display results
+                    resultsList.innerHTML = '';
+                    
+                    data.results.forEach((item, index) => {
+                        const resultItem = document.createElement('div');
+                        resultItem.className = 'result-item';
+                        resultItem.innerHTML = `
+                            <strong>${item.label}:</strong> ${item.percentage} (score: ${item.score.toFixed(4)})
+                        `;
+                        // Add delay for staggered animation
+                        resultItem.style.animationDelay = `${index * 0.1}s`;
+                        resultsList.appendChild(resultItem);
+                    });
+                    
+                    // Create chart
+                    createChart(data.results);
+                    
+                    // Show warning if toxic with animation
+                    if (data.is_toxic === true) {
+                        setTimeout(() => {
+                            warning.style.display = 'block';
+                        }, 300);
+                    }
+                    
+                    results.style.display = 'block';
+                    
+                    // Add to history
+                    addToHistory(formData.get('text'), data.results, data.is_toxic);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+                
+            } catch (error) {
+                alert('An error occurred: ' + error);
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+
+        function createChart(results) {
+            const ctx = document.getElementById('toxicity-chart').getContext('2d');
+            const labels = results.map(r => r.label);
+            const scores = results.map(r => r.score);
+            
+            toxicityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Toxicity Score',
+                        data: scores,
+                        backgroundColor: scores.map(score => 
+                            score > 0.75 ? '#ff6b6b' : '#4ecdc4'
+                        ),
+                        borderColor: scores.map(score =>
+                            score > 0.75 ? '#c62828' : '#26a69a'
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 2000,
+                        easing: 'easeOutQuart'
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1.0,
+                            title: {
+                                display: true,
+                                text: 'Confidence Score'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Toxicity Categories'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function copyResults() {
+            const resultsText = Array.from(document.querySelectorAll('.result-item'))
+                .map(item => item.textContent)
+                .join('\n');
+            
+            // Add animation to the button
+            const copyBtn = document.querySelector('.copy-btn');
+            copyBtn.textContent = '✅ Copied!';
+            
+            navigator.clipboard.writeText(resultsText)
+                .then(() => {
+                    setTimeout(() => {
+                        copyBtn.textContent = '📋 Copy Results';
+                    }, 2000);
+                })
+                .catch(err => {
+                    alert('Failed to copy: ' + err);
+                    copyBtn.textContent = '📋 Copy Results';
+                });
+        }
+
+        // History modal functionality
+        const historyModal = document.getElementById('history-modal');
+        const historyBtn = document.getElementById('history-btn');
+        const closeModalBtn = document.getElementById('close-modal');
+        const historyList = document.getElementById('history-list');
+        const clearHistoryBtn = document.getElementById('clear-history');
+
+        historyBtn.addEventListener('click', showHistoryModal);
+        closeModalBtn.addEventListener('click', closeHistoryModal);
+        clearHistoryBtn.addEventListener('click', clearHistory);
+
+        function showHistoryModal() {
+            loadHistory();
+            historyModal.style.display = 'flex';
+        }
+
+        function closeHistoryModal() {
+            historyModal.style.display = 'none';
+        }
+
+        // Close modal when clicking outside the content
+        window.addEventListener('click', function(event) {
+            if (event.target === historyModal) {
+                closeHistoryModal();
+            }
+        });
+
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="no-history">No analysis history found.</div>';
+                return;
+            }
+            
+            historyList.innerHTML = '';
+            history.forEach((item, index) => {
+                const historyItem = document.createElement('div');
+                historyItem.className = 'history-item';
+                
+                // Add delay for staggered animation
+                historyItem.style.animationDelay = `${index * 0.1}s`;
+                
+                const date = new Date(item.timestamp);
+                const formattedDate = date.toLocaleString();
+                
+                // Create a summary of results
+                const resultsSummary = item.results.map(result => 
+                    `${result.label}: ${result.percentage}`
+                ).join(', ');
+                
+                historyItem.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <strong>${formattedDate}</strong>
+                        ${item.is_toxic ? '<span style="color: #c62828; font-weight: bold;">🚨 TOXIC</span>' : '<span style="color: #388e3c;">✅ CLEAN</span>'}
+                    </div>
+                    <div class="history-text">${escapeHtml(item.text)}</div>
+                    <div class="history-results">
+                        <strong>Results:</strong> ${resultsSummary}
+                    </div>
+                `;
+                
+                historyList.appendChild(historyItem);
+            });
+        }
+
+        function addToHistory(text, results, isToxic) {
+            const history = JSON.parse(localStorage.getItem('analysisHistory') || '[]');
+            
+            // Add new analysis to history
+            history.unshift({
+                text: text,
+                results: results,
+                is_toxic: isToxic,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Keep only the last 20 analyses
+            if (history.length > 20) {
+                history.pop();
+            }
+            
+            localStorage.setItem('analysisHistory', JSON.stringify(history));
+        }
+
+        function clearHistory() {
+            if (confirm('Are you sure you want to clear all history?')) {
+                localStorage.removeItem('analysisHistory');
+                // Add animation when clearing
+                const historyItems = document.querySelectorAll('.history-item');
+                historyItems.forEach((item, index) => {
+                    item.style.animation = 'fadeIn 0.3s reverse forwards';
+                    item.style.animationDelay = `${index * 0.05}s`;
+                });
+                
+                setTimeout(() => {
+                    loadHistory();
+                }, 300);
+            }
+        }
+
+        // Helper function to escape HTML for safe rendering
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
